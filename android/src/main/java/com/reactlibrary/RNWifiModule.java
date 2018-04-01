@@ -17,6 +17,8 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.provider.Settings;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 
 import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.Promise;
@@ -177,6 +179,20 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
         wifi.setWifiEnabled(enabled);
     }
 
+
+    //Send the ssid and password of a Wifi network into this to connect to the network.
+    //Example:  wifi.findAndConnect(ssid, password);
+    //After 10 seconds, a post telling you whether you are connected will pop up.
+    //Callback returns true if ssid is in the range
+    @ReactMethod
+    public void connectToSSID(String ssid, Promise promise) {
+        if(connectToWifi(createConfiguration(ssid))) {
+            promise.resolve(true);
+        } else {
+            promise.reject("Can't connect to provided wifi!", "Can't connect to provided wifi!");
+        }
+    }
+
     //Send the ssid and password of a Wifi network into this to connect to the network.
     //Example:  wifi.findAndConnect(ssid, password);
     //After 10 seconds, a post telling you whether you are connected will pop up.
@@ -212,10 +228,8 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
         connectionStatusResult.invoke(false);
     }
 
-    //Method to connect to WIFI Network
+    private WifiConfiguration createConfiguration(String ssid) {
 
-    public Boolean connectTo(ScanResult result, String password, String ssid) {
-        //Make new configuration
         WifiConfiguration conf = new WifiConfiguration();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -223,6 +237,15 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
         } else {
             conf.SSID = "\"" + ssid + "\"";
         }
+        return conf;
+    }
+
+    //Method to connect to WIFI Network
+
+    public Boolean connectTo(ScanResult result, @NonNull String password, @NonNull String ssid) {
+        //Make new configuration
+
+        WifiConfiguration conf = createConfiguration(ssid);
 
         String capabilities = result.capabilities;
 
@@ -289,6 +312,19 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
         }
 
         return wifi.enableNetwork(updateNetwork, true);
+    }
+
+    private boolean connectToWifi(@Nullable WifiConfiguration conf) {
+        List<WifiConfiguration> wifiList = wifi.getConfiguredNetworks();
+
+        for (WifiConfiguration wifiConfig : wifiList) {
+            if (wifiConfig.SSID.equals(conf.SSID)) {
+                wifi.disconnect();
+                return wifi.enableNetwork(wifiConfig.networkId, true);
+            }
+        }
+
+        return false;
     }
 
     //Disconnect current Wifi.
@@ -369,8 +405,8 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
         WifiReceiver receiverWifi = new WifiReceiver(wifi, successCallback, errorCallback);
         Activity activity = ReactContextActivity
                 .getCurrentActivity(getReactApplicationContext());
-        if(null != activity) {
-                activity.registerReceiver(receiverWifi, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+        if (null != activity) {
+            activity.registerReceiver(receiverWifi, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
         }
         wifi.startScan();
     }
