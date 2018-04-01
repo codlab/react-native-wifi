@@ -17,7 +17,7 @@ public class ReactContextActivity {
      * Expose the current react-native registered activity
      *
      * Warning : do not hold the reference
-     * 
+     *
      * @param fromContext a non null instance
      * @return a nullable instance of the activity
      */
