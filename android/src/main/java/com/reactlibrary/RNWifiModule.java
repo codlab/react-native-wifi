@@ -1,5 +1,6 @@
 package com.reactlibrary;
 
+import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -31,19 +32,17 @@ import org.json.JSONObject;
 
 import java.util.List;
 
-// import com.facebook.react.LifecycleState;
-
 public class RNWifiModule extends ReactContextBaseJavaModule {
 
     //WifiManager Instance
-    WifiManager wifi;
-    ReactApplicationContext context;
+    private WifiManager wifi;
+    private ReactApplicationContext context;
 
     //Constructor
     public RNWifiModule(ReactApplicationContext reactContext) {
         super(reactContext);
         wifi = (WifiManager) reactContext.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        context = (ReactApplicationContext) getReactApplicationContext();
+        context = getReactApplicationContext();
     }
 
     //Name for module register to use:
@@ -68,7 +67,9 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
                         wifiObject.put("capabilities", result.capabilities);
                         wifiObject.put("frequency", result.frequency);
                         wifiObject.put("level", result.level);
-                        wifiObject.put("timestamp", result.timestamp);
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+                            wifiObject.put("timestamp", result.timestamp);
+                        }
                         //Other fields not added
                         //wifiObject.put("operatorFriendlyName", result.operatorFriendlyName);
                         //wifiObject.put("venueName", result.venueName);
@@ -125,22 +126,28 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
                     builder.addTransportType(NetworkCapabilities.TRANSPORT_WIFI);
 
 
-                    manager.requestNetwork(builder.build(), new ConnectivityManager.NetworkCallback() {
-                        @Override
-                        public void onAvailable(Network network) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                manager.bindProcessToNetwork(network);
-                            } else {
-                                //This method was deprecated in API level 23
-                                ConnectivityManager.setProcessDefaultNetwork(network);
+                    if (null != manager) {
+                        manager.requestNetwork(builder.build(), new ConnectivityManager.NetworkCallback() {
+                            @Override
+                            public void onAvailable(Network network) {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                    manager.bindProcessToNetwork(network);
+                                } else {
+                                    //This method was deprecated in API level 23
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                        ConnectivityManager.setProcessDefaultNetwork(network);
+                                    }
+                                }
+                                try {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                        manager.unregisterNetworkCallback(this);
+                                    }
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
                             }
-                            try {
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                            manager.unregisterNetworkCallback(this);
-                        }
-                    });
+                        });
+                    }
                 }
 
 
@@ -149,7 +156,9 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 ConnectivityManager manager = (ConnectivityManager) context
                         .getSystemService(Context.CONNECTIVITY_SERVICE);
-                manager.bindProcessToNetwork(null);
+                if (null != manager) {
+                    manager.bindProcessToNetwork(null);
+                }
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 ConnectivityManager.setProcessDefaultNetwork(null);
             }
@@ -173,7 +182,7 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
     //After 10 seconds, a post telling you whether you are connected will pop up.
     //Callback returns true if ssid is in the range
     @ReactMethod
-    public void connectToProtectedSSID(String ssid, String password, Boolean isWep, Promise promise) {
+    public void connectToProtectedSSID(String ssid, String password, /* use for ios*/ Boolean isWep, Promise promise) {
         List<ScanResult> results = wifi.getScanResults();
         boolean connected = false;
         for (ScanResult result : results) {
@@ -192,16 +201,19 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
     //Use this method to check if the device is currently connected to Wifi.
     @ReactMethod
     public void connectionStatus(Callback connectionStatusResult) {
-        ConnectivityManager connManager = (ConnectivityManager) getReactApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
-        NetworkInfo mWifi = connManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
-        if (mWifi.isConnected()) {
-            connectionStatusResult.invoke(true);
-        } else {
-            connectionStatusResult.invoke(false);
+        ConnectivityManager manager = (ConnectivityManager) getReactApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (null != manager) {
+            NetworkInfo mWifi = manager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+            if (mWifi.isConnected()) {
+                connectionStatusResult.invoke(true);
+                return;
+            }
         }
+        connectionStatusResult.invoke(false);
     }
 
     //Method to connect to WIFI Network
+
     public Boolean connectTo(ScanResult result, String password, String ssid) {
         //Make new configuration
         WifiConfiguration conf = new WifiConfiguration();
@@ -266,7 +278,6 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
             updateNetwork = wifi.addNetwork(conf);
             wifi.saveConfiguration();
         }
-        ;
 
         if (updateNetwork == -1) {
             return false;
@@ -276,15 +287,8 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
         if (!disconnect) {
             return false;
         }
-        ;
 
-        boolean enableNetwork = wifi.enableNetwork(updateNetwork, true);
-        if (!enableNetwork) {
-            return false;
-        }
-        ;
-
-        return true;
+        return wifi.enableNetwork(updateNetwork, true);
     }
 
     //Disconnect current Wifi.
@@ -328,7 +332,10 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void getFrequency(final Callback callback) {
         WifiInfo info = wifi.getConnectionInfo();
-        int frequency = info.getFrequency();
+        int frequency = 0;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            frequency = info.getFrequency();
+        }
         callback.invoke(frequency);
     }
 
@@ -360,14 +367,16 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void reScanAndLoadWifiList(Callback successCallback, Callback errorCallback) {
         WifiReceiver receiverWifi = new WifiReceiver(wifi, successCallback, errorCallback);
-        ReactContextActivity
-                .getCurrentActivity(getReactApplicationContext())
-                .registerReceiver(receiverWifi, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+        Activity activity = ReactContextActivity
+                .getCurrentActivity(getReactApplicationContext());
+        if(null != activity) {
+                activity.registerReceiver(receiverWifi, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+        }
         wifi.startScan();
     }
 
     public static String longToIP(int longIp) {
-        StringBuffer sb = new StringBuffer("");
+        StringBuilder sb = new StringBuilder("");
         String[] strip = new String[4];
         strip[3] = String.valueOf((longIp >>> 24));
         strip[2] = String.valueOf((longIp & 0x00FFFFFF) >>> 16);
@@ -414,7 +423,9 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
                             wifiObject.put("capabilities", result.capabilities);
                             wifiObject.put("frequency", result.frequency);
                             wifiObject.put("level", result.level);
-                            wifiObject.put("timestamp", result.timestamp);
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+                                wifiObject.put("timestamp", result.timestamp);
+                            }
                         } catch (JSONException e) {
                             this.errorCallback.invoke(e.getMessage());
                             return;
@@ -423,10 +434,8 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
                     }
                 }
                 this.successCallback.invoke(wifiArray.toString());
-                return;
             } catch (IllegalViewOperationException e) {
                 this.errorCallback.invoke(e.getMessage());
-                return;
             }
         }
     }
