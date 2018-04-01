@@ -20,6 +20,7 @@ import android.provider.Settings;
 import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReactContextActivity;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.uimanager.IllegalViewOperationException;
@@ -359,7 +360,9 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void reScanAndLoadWifiList(Callback successCallback, Callback errorCallback) {
         WifiReceiver receiverWifi = new WifiReceiver(wifi, successCallback, errorCallback);
-        getReactApplicationContext().getCurrentActivity().registerReceiver(receiverWifi, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+        ReactContextActivity
+                .getCurrentActivity(getReactApplicationContext())
+                .registerReceiver(receiverWifi, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
         wifi.startScan();
     }
 
